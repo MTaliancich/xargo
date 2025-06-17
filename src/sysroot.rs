@@ -35,13 +35,20 @@ fn build(
     message_format: Option<&str>,
     cargo_mode: XargoMode,
 ) -> Result<()> {
-    const TOML: &str = r#"
+    /*const TOML: &str = r#"
 [package]
 authors = ["The Rust Project Developers"]
 name = "sysroot"
 version = "0.0.0"
-"#;
+"#;*/
 
+    let mut base_toml = toml::toml! {
+        [package]
+        authors = ["The Rust Project Developers"]
+        name = "sysroot"
+        version = "0.0.0"
+        edition = "2024"
+    };
     let rustlib = home.lock_rw(cmode.triple())?;
     rustlib
         .remove_siblings()
@@ -98,7 +105,10 @@ version = "0.0.0"
             td.path()
         };
 
-        let mut stoml = TOML.to_owned();
+        base_toml.insert("dependencies".to_owned(), Value::Table(stage.dependencies));
+        base_toml.insert("patch".to_owned(), Value::Table(stage.patch));
+
+        /*let mut stoml = TOML.to_owned();
         {
             let mut map = Table::new();
 
@@ -106,11 +116,14 @@ version = "0.0.0"
             map.insert("patch".to_owned(), Value::Table(stage.patch));
 
             stoml.push_str(&Value::Table(map).to_string());
-        }
+        }*/
 
         if let Some(ctoml) = ctoml {
             if let Some(profile) = ctoml.profile() {
-                stoml.push_str(&profile.to_string())
+                let mut release: Table = Table::new();
+                release.insert("release".to_owned(), profile.table.clone());
+                base_toml.insert("profile".to_owned(), Value::Table(release));
+                //stoml.push_str(&profile.to_string())
             }
         }
 
@@ -123,7 +136,7 @@ version = "0.0.0"
         let lockfile = src_parent.join("Cargo.lock");*/
         // Fix for #347 by @japaric
         let lockfile = src.path().join("Cargo.lock");
-        
+
         let target_lockfile = td.join("Cargo.lock");
         fs::copy(lockfile, &target_lockfile)
             .map_err(|e| anyhow!("Cargo.lock file is missing from source dir\n{e:?}"))?;
@@ -135,7 +148,7 @@ version = "0.0.0"
         fs::set_permissions(&target_lockfile, perms)
             .map_err(|e| anyhow!("Cargo.lock file is missing from target dir\n{e:?}"))?;
 
-        util::write(&td.join("Cargo.toml"), &stoml)?;
+        util::write(&td.join("Cargo.toml"), &toml::to_string(&base_toml)?)?;
         util::mkdir(&td.join("src"))?;
         util::write(&td.join("src").join("lib.rs"), "")?;
 

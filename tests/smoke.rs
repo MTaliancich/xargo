@@ -18,6 +18,7 @@ use anyhow::*;
 use parking_lot::{Mutex, MutexGuard};
 use std::result::Result::Ok;
 use tempdir::TempDir;
+use toml::toml;
 
 macro_rules! run {
     () => {
@@ -51,7 +52,9 @@ fn cleanup(target: &str) -> Result<()> {
 fn exists(krate: &str, target: &str) -> Result<bool> {
     let p = home()?.join("lib/rustlib").join(target).join("lib");
 
-    for e in fs::read_dir(&p).map_err(|e| anyhow!("couldn't read the directory {}\n{e:?}", p.display()))? {
+    for e in fs::read_dir(&p)
+        .map_err(|e| anyhow!("couldn't read the directory {}\n{e:?}", p.display()))?
+    {
         let e = e.map_err(|_| {
             anyhow!(
                 "error reading the contents of the directory {}",
@@ -72,7 +75,8 @@ fn host() -> String {
 }
 
 fn mkdir(path: &Path) -> Result<()> {
-    fs::create_dir(path).map_err(|e| anyhow!("couldn't create the directory {}\n{e:?}", path.display()))
+    fs::create_dir(path)
+        .map_err(|e| anyhow!("couldn't create the directory {}\n{e:?}", path.display()))
 }
 
 fn sysroot_was_built(stderr: &str, target: &str) -> bool {
@@ -105,8 +109,8 @@ fn write(path: &Path, append: bool, contents: &str) -> Result<()> {
 }
 
 fn xargo() -> Result<Command> {
-    let mut p =
-        env::current_exe().map_err(|e| anyhow!("couldn't get path to current executable\n{e:?}"))?;
+    let mut p = env::current_exe()
+        .map_err(|e| anyhow!("couldn't get path to current executable\n{e:?}"))?;
     p.pop();
     p.pop();
     p.push("xargo");
@@ -114,8 +118,8 @@ fn xargo() -> Result<Command> {
 }
 
 fn xargo_check() -> Result<Command> {
-    let mut p =
-        env::current_exe().map_err(|e| anyhow!("couldn't get path to current executable\n{e:?}"))?;
+    let mut p = env::current_exe()
+        .map_err(|e| anyhow!("couldn't get path to current executable\n{e:?}"))?;
     p.pop();
     p.pop();
     p.push("xargo-check");
@@ -149,8 +153,8 @@ impl CommandExt for Command {
             .output()
             .map_err(|e| anyhow!("couldn't execute `{:?}`\n{e:?}", self))?;
 
-        let stderr =
-            String::from_utf8(out.stderr).map_err(|e| anyhow!("`{:?}` output was not UTF-8\n{e:?}", self));
+        let stderr = String::from_utf8(out.stderr)
+            .map_err(|e| anyhow!("`{:?}` output was not UTF-8\n{e:?}", self));
 
         if out.status.success() {
             stderr
@@ -200,9 +204,10 @@ impl Project {
         const JSON: &'static str = r#"
 {
     "arch": "arm",
-    "data-layout": "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64",
+    "data-layout": "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
     "linker-flavor": "gcc",
     "llvm-target": "thumbv6m-none-eabi",
+    "llvm-floatabi": "soft",
     "max-atomic-width": 0,
     "os": "none",
     "target-c-int-width": "32",
@@ -329,8 +334,8 @@ impl HProject {
         let guard = ONCE.lock();
 
         // Put a space into the working directory name to also test that case.
-        let td =
-            TempDir::new("xar go").map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
+        let td = TempDir::new("xar go")
+            .map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
 
         xargo()?
             .args(&["init", "-q", "--lib", "--vcs", "none", "--name", "host"])
@@ -350,7 +355,7 @@ impl HProject {
         Ok(HProject {
             _guard: guard,
             host: host(),
-            td: td,
+            td,
         })
     }
 
@@ -426,8 +431,8 @@ fn target_dependencies() {
         const TARGET: &'static str = "thumbv7m-none-eabi";
         const STAGE1: &'static str = "stage1";
 
-        let td =
-            TempDir::new("xargo").map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
+        let td = TempDir::new("xargo")
+            .map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
         let project = Project::new_in(td.path().to_path_buf(), TARGET)?;
 
         let stage1_path = td.path().join(STAGE1);
@@ -683,12 +688,10 @@ fn panic_abort() {
 
         let project = Project::new(TARGET)?;
 
-        project.cargo_toml(
-            r#"
-[profile.release]
-panic = "abort"
-"#,
-        )?;
+        project.cargo_toml(&toml::to_string(&toml! {
+            [profile.release]
+            panic = "abort"
+        })?)?;
 
         let stderr = project.build_and_get_stderr(Some(TARGET))?;
 
@@ -741,12 +744,13 @@ fn specification_changed() {
         const JSON: &'static str = r#"
 {
     "arch": "arm",
-    "data-layout": "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64",
+    "data-layout": "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
     "linker-flavor": "gcc",
     "llvm-target": "thumbv6m-none-eabi",
     "max-atomic-width": 0,
     "os": "none",
     "panic-strategy": "abort",
+    "llvm-floatabi": "soft",
     "target-c-int-width": "32",
     "target-endian": "little",
     "target-pointer-width": "32"
@@ -787,11 +791,12 @@ fn unchanged_specification() {
         const JSON: &'static str = r#"
 {
     "arch": "arm",
-    "data-layout": "e-m:e-p:32:32-i64:64-v128:64:128-a:0:32-n32-S64",
+    "data-layout": "e-m:e-p:32:32-Fi8-i64:64-v128:64:128-a:0:32-n32-S64",
     "linker-flavor": "gcc",
     "llvm-target": "thumbv6m-none-eabi",
     "os": "none",
     "max-atomic-width": 0,
+    "llvm-floatabi": "soft",
     "target-c-int-width": "32",
     "target-endian": "little",
     "target-pointer-width": "32"

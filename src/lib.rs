@@ -79,8 +79,11 @@ impl CompilationMode {
 
 pub fn main_inner(xargo_mode: XargoMode) {
     fn show_backtrace() -> bool {
-        if let Ok("1") = env::var("RUST_BACKTRACE").as_ref().map(|s| &s[..]) {
-            true
+        if let Ok(trace) = env::var("RUST_BACKTRACE").as_ref().map(|s| (s[..].trim())) {
+            match trace {
+                "1" | "full" => true,
+                _ => false,
+            }
         } else {
             false
         }

@@ -190,7 +190,7 @@ pub fn config() -> Result<Option<Config>> {
 }
 
 pub struct Profile<'t> {
-    table: &'t Value,
+    pub table: &'t Value,
 }
 
 impl<'t> Profile<'t> {
@@ -229,7 +229,7 @@ impl<'t> fmt::Display for Profile<'t> {
 }
 
 pub struct Toml {
-    table: Value,
+    pub table: Value,
 }
 
 impl Toml {
