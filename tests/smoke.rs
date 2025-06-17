@@ -42,7 +42,7 @@ fn cleanup(target: &str) -> Result<()> {
     let p = home()?.join("lib/rustlib").join(target);
 
     if p.exists() {
-        fs::remove_dir_all(&p).map_err(|_| anyhow!("couldn't clean sysroot for {}", target))
+        fs::remove_dir_all(&p).map_err(|e| anyhow!("couldn't clean sysroot for {}\n{e:?}", target))
     } else {
         Ok(())
     }
@@ -51,7 +51,7 @@ fn cleanup(target: &str) -> Result<()> {
 fn exists(krate: &str, target: &str) -> Result<bool> {
     let p = home()?.join("lib/rustlib").join(target).join("lib");
 
-    for e in fs::read_dir(&p).map_err(|_| anyhow!("couldn't read the directory {}", p.display()))? {
+    for e in fs::read_dir(&p).map_err(|e| anyhow!("couldn't read the directory {}\n{e:?}", p.display()))? {
         let e = e.map_err(|_| {
             anyhow!(
                 "error reading the contents of the directory {}",
@@ -72,7 +72,7 @@ fn host() -> String {
 }
 
 fn mkdir(path: &Path) -> Result<()> {
-    fs::create_dir(path).map_err(|_| anyhow!("couldn't create the directory {}", path.display()))
+    fs::create_dir(path).map_err(|e| anyhow!("couldn't create the directory {}\n{e:?}", path.display()))
 }
 
 fn sysroot_was_built(stderr: &str, target: &str) -> bool {
@@ -99,14 +99,14 @@ fn write(path: &Path, append: bool, contents: &str) -> Result<()> {
 
     opts.write(true)
         .open(path)
-        .map_err(|_| anyhow!("couldn't open {}", p))?
+        .map_err(|e| anyhow!("couldn't open {}\n{e:?}", p))?
         .write_all(contents.as_bytes())
-        .map_err(|_| anyhow!("couldn't write to {}", p))
+        .map_err(|e| anyhow!("couldn't write to {}\n{e:?}", p))
 }
 
 fn xargo() -> Result<Command> {
     let mut p =
-        env::current_exe().map_err(|_| anyhow!("couldn't get path to current executable"))?;
+        env::current_exe().map_err(|e| anyhow!("couldn't get path to current executable\n{e:?}"))?;
     p.pop();
     p.pop();
     p.push("xargo");
@@ -115,7 +115,7 @@ fn xargo() -> Result<Command> {
 
 fn xargo_check() -> Result<Command> {
     let mut p =
-        env::current_exe().map_err(|_| anyhow!("couldn't get path to current executable"))?;
+        env::current_exe().map_err(|e| anyhow!("couldn't get path to current executable\n{e:?}"))?;
     p.pop();
     p.pop();
     p.push("xargo-check");
@@ -131,7 +131,7 @@ impl CommandExt for Command {
     fn run(&mut self) -> Result<()> {
         let status = self
             .status()
-            .map_err(|_| anyhow!("couldn't execute `{:?}`", self))?;
+            .map_err(|e| anyhow!("couldn't execute `{:?}`\n{e:?}", self))?;
 
         if status.success() {
             Ok(())
@@ -147,10 +147,10 @@ impl CommandExt for Command {
     fn run_and_get_stderr(&mut self) -> Result<String> {
         let out = self
             .output()
-            .map_err(|_| anyhow!("couldn't execute `{:?}`", self))?;
+            .map_err(|e| anyhow!("couldn't execute `{:?}`\n{e:?}", self))?;
 
         let stderr =
-            String::from_utf8(out.stderr).map_err(|_| anyhow!("`{:?}` output was not UTF-8", self));
+            String::from_utf8(out.stderr).map_err(|e| anyhow!("`{:?}` output was not UTF-8\n{e:?}", self));
 
         if out.status.success() {
             stderr
@@ -212,7 +212,7 @@ impl Project {
 "#;
 
         let td = TempDir::new_in(dir, "xargo")
-            .map_err(|_| anyhow!("couldn't create a temporary directory"))?;
+            .map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
 
         create_simple_project(td.path(), name, "#![no_std]")?;
         write(&td.path().join(format!("{}.json", name)), false, JSON)?;
@@ -306,7 +306,7 @@ fn hcleanup(triple: &str) -> Result<()> {
     let p = home()?.join("HOST/lib/rustlib").join(triple);
 
     if p.exists() {
-        fs::remove_dir_all(&p).map_err(|_| anyhow!("couldn't clean sysroot for {}", triple))
+        fs::remove_dir_all(&p).map_err(|e| anyhow!("couldn't clean sysroot for {}\n{e:?}", triple))
     } else {
         Ok(())
     }
@@ -330,7 +330,7 @@ impl HProject {
 
         // Put a space into the working directory name to also test that case.
         let td =
-            TempDir::new("xar go").map_err(|_| anyhow!("couldn't create a temporary directory"))?;
+            TempDir::new("xar go").map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
 
         xargo()?
             .args(&["init", "-q", "--lib", "--vcs", "none", "--name", "host"])
@@ -427,7 +427,7 @@ fn target_dependencies() {
         const STAGE1: &'static str = "stage1";
 
         let td =
-            TempDir::new("xargo").map_err(|_| anyhow!("couldn't create a temporary directory"))?;
+            TempDir::new("xargo").map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
         let project = Project::new_in(td.path().to_path_buf(), TARGET)?;
 
         let stage1_path = td.path().join(STAGE1);
@@ -493,7 +493,7 @@ fn build_outside_project_dir() {
         )?;
         // This `workdir` is from where `xargo build` is invoked. It is different from the project dir.
         let workdir = TempDir::new("xargo_workdir")
-            .map_err(|_| anyhow!("couldn't create a temporary directory"))?;
+            .map_err(|e| anyhow!("couldn't create a temporary directory\n{e:?}"))?;
 
         project.build_from_workdir(TARGET, &workdir.path())?;
 
@@ -966,7 +966,7 @@ fn cargo_check_check_no_ctoml() {
         // Make sure that 'Xargo.toml` exists
         project.xargo_toml("")?;
         std::fs::remove_file(project.td.path().join("Cargo.toml"))
-            .map_err(|_| anyhow!("Could not remove Cargo.toml"))?;
+            .map_err(|e| anyhow!("Could not remove Cargo.toml\n{e:?}"))?;
 
         // windows-gnu specifically needs some extra files to be copied for full builds;
         // make sure check-builds work without those files.

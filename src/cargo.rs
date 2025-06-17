@@ -178,7 +178,7 @@ impl Config {
 }
 
 pub fn config() -> Result<Option<Config>> {
-    let cd = env::current_dir().map_err(|e| Error::new(e))?;
+    let cd = env::current_dir().map_err(|e| anyhow!("Could not get current DIR\n{e:?}"))?;
 
     if let Some(p) = util::search(&cd, ".cargo/config") {
         Ok(Some(Config {
@@ -265,7 +265,7 @@ pub fn root(mode: XargoMode, manifest_path: Option<&str>) -> Result<Option<Root>
     };
 
     let cd = match manifest_path {
-        None => env::current_dir().map_err(Error::new)?,
+        None => env::current_dir().map_err(|e| anyhow!("Could not get current DIR\n{e:?}"))?,
         Some(p) => {
             let mut pb = PathBuf::from(p);
             pb.pop(); // strip filename, keep directory containing Cargo.toml

@@ -65,14 +65,14 @@ impl Home {
         let fs = self.path(triple);
 
         fs.open_ro(".sentinel", &format!("{triple}'s sysroot"))
-            .map_err(|_| anyhow!("couldn't lock {}'s sysroot as read-only", triple))
+            .map_err(|e| anyhow!("couldn't lock {}'s sysroot as read-only\n{e:?}", triple))
     }
 
     pub fn lock_rw(&self, triple: &str) -> Result<FileLock> {
         let fs = self.path(triple);
 
         fs.open_rw(".sentinel", &format!("{triple}'s sysroot"))
-            .map_err(|_| anyhow!("couldn't lock {}'s sysroot as read-only", triple))
+            .map_err(|e| anyhow!("couldn't lock {}'s sysroot as read-only\n{e:?}", triple))
     }
 }
 

@@ -152,7 +152,7 @@ impl Target {
             // Here we roundtrip to/from JSON to get the same hash when some
             // fields of the JSON file has been shuffled around
             serde_json::from_str::<Value>(&util::read(json)?)
-                .map_err(|_| anyhow!("{} is not valid JSON", json.display()))?
+                .map_err(|e| anyhow!("{} is not valid JSON\n{e:?}", json.display()))?
                 .to_string()
                 .hash(hasher);
         }

@@ -45,7 +45,7 @@ version = "0.0.0"
     let rustlib = home.lock_rw(cmode.triple())?;
     rustlib
         .remove_siblings()
-        .map_err(|_| anyhow!("couldn't clear {}", rustlib.path().display()))?;
+        .map_err(|e| anyhow!("couldn't clear {}\n{e:?}", rustlib.path().display()))?;
     let dst = rustlib.parent().join("lib");
     util::mkdir(&dst)?;
 
@@ -89,7 +89,7 @@ version = "0.0.0"
     }
 
     for (_, stage) in blueprint.stages {
-        let td = TempDir::new("xargo").map_err(|e| Error::new(e))?;
+        let td = TempDir::new("xargo").map_err(|e| anyhow!("Could not create temp DIR\n{e:?}"))?;
         let tdp;
         let td = if env::var_os("XARGO_KEEP_TEMP").is_some() {
             tdp = td.into_path();
@@ -126,14 +126,14 @@ version = "0.0.0"
         
         let target_lockfile = td.join("Cargo.lock");
         fs::copy(lockfile, &target_lockfile)
-            .map_err(|_| anyhow!("Cargo.lock file is missing from source dir"))?;
+            .map_err(|e| anyhow!("Cargo.lock file is missing from source dir\n{e:?}"))?;
 
         let mut perms = fs::metadata(&target_lockfile)
-            .map_err(|_| anyhow!("Cargo.lock file is missing from target dir"))?
+            .map_err(|e| anyhow!("Cargo.lock file is missing from target dir\n{e:?}"))?
             .permissions();
         perms.set_readonly(false);
         fs::set_permissions(&target_lockfile, perms)
-            .map_err(|_| anyhow!("Cargo.lock file is missing from target dir"))?;
+            .map_err(|e| anyhow!("Cargo.lock file is missing from target dir\n{e:?}"))?;
 
         util::write(&td.join("Cargo.toml"), &stoml)?;
         util::mkdir(&td.join("src"))?;
@@ -347,7 +347,7 @@ pub fn update(
     }
 
     lock.remove_siblings()
-        .map_err(|_| anyhow!("couldn't clear {}", lock.path().display()))?;
+        .map_err(|e| anyhow!("couldn't clear {}\n{e:?}", lock.path().display()))?;
     let dst = lock.parent().join("lib");
     util::mkdir(&dst)?;
     util::cp_r(
@@ -474,7 +474,7 @@ impl Blueprint {
                         base_path
                             .join(&p)
                             .canonicalize()
-                            .map_err(|_| anyhow!("couldn't canonicalize {}", p.display()))?
+                            .map_err(|e| anyhow!("couldn't canonicalize {}\n{e:?}", p.display()))?
                             .display()
                             .to_string(),
                     );

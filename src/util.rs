@@ -33,12 +33,12 @@ pub fn cp_r(src: &Path, dst: &Path) -> Result<()> {
         let dst_file = dst.join(relative_path);
         let metadata = e
             .metadata()
-            .map_err(|_| anyhow!("Could not retrieve metadata of `{}`", e.path().display()))?;
+            .map_err(|e| anyhow!("Could not retrieve metadata\n{e:?}"))?;
 
         if metadata.is_dir() {
             // ensure the destination directory exists
             fs::create_dir_all(&dst_file)
-                .map_err(|_| anyhow!("Could not create directory `{}`", dst_file.display()))?;
+                .map_err(|e| anyhow!("Could not create directory `{}`\n{e:?}", dst_file.display()))?;
         } else {
             // else copy the file
             fs::copy(&src_file, &dst_file).map_err(|_| {
@@ -55,14 +55,14 @@ pub fn cp_r(src: &Path, dst: &Path) -> Result<()> {
 }
 
 pub fn mkdir(path: &Path) -> Result<()> {
-    fs::create_dir(path).map_err(|_| anyhow!("couldn't create directory {}", path.display()))
+    fs::create_dir(path).map_err(|e| anyhow!("couldn't create directory {}\n{e:?}", path.display()))
 }
 
 /// Parses `path` as TOML
 pub fn parse(path: &Path) -> Result<Value> {
     Ok(
         toml::from_str(&read(path)?)
-            .map_err(|_| anyhow!("{} is not valid TOML", path.display()))?,
+            .map_err(|e| anyhow!("{} is not valid TOML\n{e:?}", path.display()))?,
     )
 }
 
@@ -71,9 +71,9 @@ pub fn read(path: &Path) -> Result<String> {
 
     let p = path.display();
     File::open(path)
-        .map_err(|_| anyhow!("couldn't open {}", p))?
+        .map_err(|e| anyhow!("couldn't open {}\n{e:?}", p))?
         .read_to_string(&mut s)
-        .map_err(|_| anyhow!("couldn't read {}", p))?;
+        .map_err(|e| anyhow!("couldn't read {}\n{e:?}", p))?;
 
     Ok(s)
 }
@@ -96,7 +96,7 @@ pub fn search<'p>(mut path: &'p Path, file: &str) -> Option<&'p Path> {
 pub fn write(path: &Path, contents: &str) -> Result<()> {
     let p = path.display();
     File::create(path)
-        .map_err(|_| anyhow!("couldn't open {}", p))?
+        .map_err(|e| anyhow!("couldn't open {}\n{e:?}", p))?
         .write_all(contents.as_bytes())
-        .map_err(|_| anyhow!("couldn't write to {}", p))
+        .map_err(|e| anyhow!("couldn't write to {}\n{e:?}", p))
 }

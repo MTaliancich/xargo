@@ -33,7 +33,7 @@ impl CommandExt for Command {
         }
 
         self.status()
-            .map_err(|_| anyhow!("couldn't execute `{:?}`", self))
+            .map_err(|e| anyhow!("couldn't execute `{:?}`\n{e:?}", self))
     }
 
     /// Runs the command to completion and returns its stdout
@@ -44,11 +44,11 @@ impl CommandExt for Command {
 
         let out = self
             .output()
-            .map_err(|_| anyhow!("couldn't execute `{:?}`", self))?;
+            .map_err(|e| anyhow!("couldn't execute `{:?}`\n{e:?}", self))?;
 
         if out.status.success() {
             Ok(String::from_utf8(out.stdout)
-                .map_err(|_| anyhow!("`{:?}` output was not UTF-8", self))?)
+                .map_err(|e| anyhow!("`{:?}` output was not UTF-8\n{e:?}", self))?)
         } else {
             Err(anyhow!(
                 "`{:?}` failed with exit code: {:?}",
