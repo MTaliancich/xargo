@@ -7,7 +7,7 @@ pub struct Args {
     subcommand: Option<Subcommand>,
     target: Option<String>,
     message_format: Option<String>,
-    manifest_path: Option<String>,  // path to the Cargo toml file given in --manifest-path
+    manifest_path: Option<String>, // path to the Cargo toml file given in --manifest-path
 }
 
 impl Args {

@@ -1,31 +1,34 @@
+#![feature(file_lock)]
 #![deny(warnings)]
 
-#[macro_use]
-extern crate error_chain;
+extern crate anyhow;
 extern crate fs2;
-#[cfg(any(all(target_os = "linux", not(target_env = "musl")), target_os = "macos"))]
+extern crate home;
+#[cfg(any(
+    all(target_os = "linux", not(target_env = "musl")),
+    target_os = "macos"
+))]
 extern crate libc;
 extern crate rustc_version;
 extern crate serde_json;
 extern crate tempdir;
 extern crate toml;
 extern crate walkdir;
-extern crate dirs;
 
 use std::hash::{Hash, Hasher};
 use std::io::Write;
-use std::path::{Path};
+use std::path::Path;
 use std::process::ExitStatus;
+use std::result::Result::Ok;
 use std::{env, io, process};
 
 use rustc_version::Channel;
 
-use errors::*;
+use anyhow::*;
 use rustc::Target;
 
 mod cargo;
 mod cli;
-mod errors;
 mod extensions;
 mod flock;
 mod rustc;
@@ -76,7 +79,11 @@ impl CompilationMode {
 
 pub fn main_inner(xargo_mode: XargoMode) {
     fn show_backtrace() -> bool {
-        env::var("RUST_BACKTRACE").as_ref().map(|s| &s[..]) == Ok("1")
+        if let Ok("1") = env::var("RUST_BACKTRACE").as_ref().map(|s| &s[..]) {
+            true
+        } else {
+            false
+        }
     }
 
     match run(xargo_mode) {
@@ -86,23 +93,19 @@ pub fn main_inner(xargo_mode: XargoMode) {
 
             writeln!(stderr, "error: {}", e).ok();
 
-            for e in e.iter().skip(1) {
-                writeln!(stderr, "caused by: {}", e).ok();
-            }
-
             if show_backtrace() {
-                if let Some(backtrace) = e.backtrace() {
-                    writeln!(stderr, "{:?}", backtrace).ok();
-                }
+                writeln!(stderr, "{:?}", e.backtrace()).ok();
             } else {
                 writeln!(stderr, "note: run with `RUST_BACKTRACE=1` for a backtrace").ok();
             }
 
             process::exit(1)
         }
-        Ok(Some(status)) => if !status.success() {
-            process::exit(status.code().unwrap_or(1))
-        },
+        Ok(Some(status)) => {
+            if !status.success() {
+                process::exit(status.code().unwrap_or(1))
+            }
+        }
         Ok(None) => {}
     }
 }
@@ -111,7 +114,7 @@ fn run(cargo_mode: XargoMode) -> Result<Option<ExitStatus>> {
     let args = cli::args();
     let verbose = args.verbose();
 
-    let meta = rustc::version().map_err(|_| "could not determine rustc version")?;
+    let meta = rustc::version().map_err(|_| anyhow!("could not determine rustc version"))?;
 
     if let Some(sc) = args.subcommand() {
         if !sc.needs_sysroot() {
@@ -122,7 +125,8 @@ fn run(cargo_mode: XargoMode) -> Result<Option<ExitStatus>> {
             io::stderr(),
             concat!("xargo ", env!("CARGO_PKG_VERSION"), "{}"),
             include_str!(concat!(env!("OUT_DIR"), "/commit-info.txt"))
-        ).ok();
+        )
+        .ok();
 
         return cargo::run(&args, verbose).map(Some);
     }
@@ -132,15 +136,17 @@ fn run(cargo_mode: XargoMode) -> Result<Option<ExitStatus>> {
         // We can't build sysroot with stable or beta due to unstable features
         let sysroot = rustc::sysroot(verbose)?;
         let src = match meta.channel {
-            Channel::Dev => rustc::Src::from_env().ok_or(
+            Channel::Dev => rustc::Src::from_env().ok_or(anyhow!(
                 "The XARGO_RUST_SRC env variable must be set and point to the \
-                 Rust source directory when working with the 'dev' channel",
-            )?,
-            Channel::Nightly => if let Some(src) = rustc::Src::from_env() {
-                src
-            } else {
-                sysroot.src()?
-            },
+                 Rust source directory when working with the 'dev' channel"
+            ))?,
+            Channel::Nightly => {
+                if let Some(src) = rustc::Src::from_env() {
+                    src
+                } else {
+                    sysroot.src()?
+                }
+            }
             Channel::Stable | Channel::Beta => {
                 eprintln!(
                     "ERROR: the sysroot can't be built for the {:?} channel. \
@@ -199,13 +205,13 @@ fn run(cargo_mode: XargoMode) -> Result<Option<ExitStatus>> {
                     &meta,
                     config.as_ref(),
                     verbose,
-                ).map(Some);
+                )
+                .map(Some);
             } else {
-                return Ok(None)
+                return Ok(None);
             }
         }
     }
 
     cargo::run(&args, verbose).map(Some)
 }
-

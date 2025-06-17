@@ -293,6 +293,7 @@ crate in the sysroot. However, this feature is mainly used to create [alternativ
 dependencies in the Xargo.toml file as you would do with Cargo.toml:
 
 [steed]: https://github.com/rust3ds/rust3ds-template
+
 [utest]: https://github.com/japaric/utest
 
 ``` toml
@@ -314,7 +315,6 @@ Xargo also supports the `patch` feature from Cargo. This allows you to force the
 of a custom crate throughout your sysroot's dependency tree. This can be especially
 useful to force the use of a custom `libc` or `compiler_builtins` without having to
 do intrusive changes to every transitive dependency.
-
 
 ``` toml
 [patch.crates-io.libc]
@@ -345,7 +345,7 @@ which will perform a normal sysroot build, followed by a 'check' build of *your 
   not possible to build the sysroot with stable or beta.
 
 - `std` is built as rlib *and* dylib. The dylib needs a panic library and an
-  allocator.  If you do not specify the `panic-unwind` feature, you have to set
+  allocator. If you do not specify the `panic-unwind` feature, you have to set
   `panic = "abort"` in `Cargo.toml`.
 
 - To build without the `jemalloc` feature include the following in `Xargo.toml`:

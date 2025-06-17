@@ -1,13 +1,13 @@
 //! Copy paste of Cargo's src/util/flock.rs with modifications to not depend on
 //! other Cargo stuff
 
-use std::fs::{File, OpenOptions};
+use std::fs::{File, OpenOptions, TryLockError};
 use std::io::Write;
 use std::path::{Display, Path, PathBuf};
 use std::{fs, io};
 
-use fs2::FileExt;
 use fs2;
+use fs2::FileExt;
 
 #[derive(PartialEq)]
 enum State {
@@ -53,7 +53,7 @@ pub struct Filesystem {
 
 impl Filesystem {
     pub fn new(path: PathBuf) -> Filesystem {
-        Filesystem { path: path }
+        Filesystem { path }
     }
 
     pub fn join<T>(&self, other: T) -> Filesystem
@@ -107,24 +107,31 @@ impl Filesystem {
 
         match state {
             State::Exclusive => {
+                acquire(msg, &path, &|| f.try_lock_exclusive(), &|| {
+                    f.lock_exclusive()
+                })?;
+            }
+            State::Shared => {
                 acquire(
                     msg,
                     &path,
-                    &|| f.try_lock_exclusive(),
-                    &|| f.lock_exclusive(),
+                    &|| {
+                        f.try_lock_shared().map_err(|e| match e {
+                            TryLockError::Error(error) => error,
+                            TryLockError::WouldBlock => {
+                                io::Error::new(io::ErrorKind::WouldBlock, msg)
+                            }
+                        })
+                    },
+                    &|| f.lock_shared(),
                 )?;
-            }
-            State::Shared => {
-                acquire(msg, &path, &|| f.try_lock_shared(), &|| f.lock_shared())?;
             }
         }
 
-        Ok(FileLock {
-            file: f,
-            path: path,
-        })
+        Ok(FileLock { file: f, path })
     }
 
+    #[allow(mismatched_lifetime_syntaxes)]
     pub fn display(&self) -> Display {
         self.path.display()
     }
@@ -173,13 +180,12 @@ fn acquire(
     match try() {
         Ok(_) => return Ok(()),
         #[cfg(target_os = "macos")]
-        Err(ref e) if e.raw_os_error() == Some(::libc::ENOTSUP) =>
-        {
-            return Ok(())
+        Err(ref e) if e.raw_os_error() == Some(::libc::ENOTSUP) => return Ok(()),
+        Err(e) => {
+            if e.raw_os_error() != fs2::lock_contended_error().raw_os_error() {
+                return Err(e);
+            }
         }
-        Err(e) => if e.raw_os_error() != fs2::lock_contended_error().raw_os_error() {
-            return Err(e);
-        },
     }
 
     writeln!(
@@ -187,7 +193,8 @@ fn acquire(
         "{:>12} waiting for file lock on {}",
         "Blocking",
         msg
-    ).ok();
+    )
+    .ok();
 
     block()
 }

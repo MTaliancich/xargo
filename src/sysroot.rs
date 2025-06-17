@@ -1,5 +1,5 @@
-use std::collections::BTreeMap;
 use std::collections::hash_map::DefaultHasher;
+use std::collections::BTreeMap;
 use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -7,15 +7,15 @@ use std::{env, fs};
 
 use rustc_version::VersionMeta;
 use tempdir::TempDir;
-use toml::{value::Table, Value, map::Map};
+use toml::{map::Map, value::Table, Value};
 
-use CompilationMode;
+use anyhow::*;
 use cargo::{Root, Rustflags};
-use errors::*;
 use extensions::CommandExt;
 use rustc::{Src, Sysroot, Target};
 use util;
 use xargo::Home;
+use CompilationMode;
 use {cargo, xargo};
 
 fn profile() -> &'static str {
@@ -35,7 +35,7 @@ fn build(
     message_format: Option<&str>,
     cargo_mode: XargoMode,
 ) -> Result<()> {
-    const TOML: &'static str = r#"
+    const TOML: &str = r#"
 [package]
 authors = ["The Rust Project Developers"]
 name = "sysroot"
@@ -45,7 +45,7 @@ version = "0.0.0"
     let rustlib = home.lock_rw(cmode.triple())?;
     rustlib
         .remove_siblings()
-        .chain_err(|| format!("couldn't clear {}", rustlib.path().display()))?;
+        .map_err(|_| anyhow!("couldn't clear {}", rustlib.path().display()))?;
     let dst = rustlib.parent().join("lib");
     util::mkdir(&dst)?;
 
@@ -65,8 +65,8 @@ version = "0.0.0"
             files.push(PathBuf::from("dllcrt2.o"));
         } else {
             let base = PathBuf::from("self-contained");
-            fs::create_dir(dst.join("self-contained")).chain_err(|| {
-                format!(
+            fs::create_dir(dst.join("self-contained")).map_err(|_| {
+                anyhow!(
                     "couldn't create directory \"self-contained\" in {}",
                     dst.display()
                 )
@@ -78,8 +78,8 @@ version = "0.0.0"
         for file in files.iter() {
             let file_src = src.join(file);
             let file_dst = dst.join(file);
-            fs::copy(&file_src, &file_dst).chain_err(|| {
-                format!(
+            fs::copy(&file_src, &file_dst).map_err(|_| {
+                anyhow!(
                     "couldn't copy {} to {}",
                     file_src.display(),
                     file_dst.display()
@@ -89,7 +89,7 @@ version = "0.0.0"
     }
 
     for (_, stage) in blueprint.stages {
-        let td = TempDir::new("xargo").chain_err(|| "couldn't create a temporary directory")?;
+        let td = TempDir::new("xargo").map_err(|e| Error::new(e))?;
         let tdp;
         let td = if env::var_os("XARGO_KEEP_TEMP").is_some() {
             tdp = td.into_path();
@@ -115,17 +115,22 @@ version = "0.0.0"
         }
 
         // rust-src comes with a lockfile for libstd. Use it.
-        let src_parent = src.path().parent().map(Path::to_path_buf).unwrap_or_else(|| src.path().join(".."));
+        let src_parent = src
+            .path()
+            .parent()
+            .map(Path::to_path_buf)
+            .unwrap_or_else(|| src.path().join(".."));
         let lockfile = src_parent.join("Cargo.lock");
         let target_lockfile = td.join("Cargo.lock");
-        fs::copy(lockfile, &target_lockfile).chain_err(|| "Cargo.lock file is missing from source dir")?;
+        fs::copy(lockfile, &target_lockfile)
+            .map_err(|_| anyhow!("Cargo.lock file is missing from source dir"))?;
 
         let mut perms = fs::metadata(&target_lockfile)
-            .chain_err(|| "Cargo.lock file is missing from target dir")?
+            .map_err(|_| anyhow!("Cargo.lock file is missing from target dir"))?
             .permissions();
         perms.set_readonly(false);
         fs::set_permissions(&target_lockfile, perms)
-            .chain_err(|| "Cargo.lock file is missing from target dir")?;
+            .map_err(|_| anyhow!("Cargo.lock file is missing from target dir"))?;
 
         util::write(&td.join("Cargo.toml"), &stoml)?;
         util::mkdir(&td.join("src"))?;
@@ -185,7 +190,7 @@ version = "0.0.0"
 
             match cargo_mode {
                 XargoMode::Build => cmd.arg("build"),
-                XargoMode::Check => cmd.arg("check")
+                XargoMode::Check => cmd.arg("check"),
             };
 
             cmd.arg("--release");
@@ -339,7 +344,7 @@ pub fn update(
     }
 
     lock.remove_siblings()
-        .chain_err(|| format!("couldn't clear {}", lock.path().display()))?;
+        .map_err(|_| anyhow!("couldn't clear {}", lock.path().display()))?;
     let dst = lock.parent().join("lib");
     util::mkdir(&dst)?;
     util::cp_r(
@@ -352,7 +357,12 @@ pub fn update(
         &dst,
     )?;
 
-    let bin_src = sysroot.path().join("lib").join("rustlib").join(&meta.host).join("bin");
+    let bin_src = sysroot
+        .path()
+        .join("lib")
+        .join("rustlib")
+        .join(&meta.host)
+        .join("bin");
     // copy the Rust linker if it exists
     if bin_src.exists() {
         let bin_dst = lock.parent().join("bin");
@@ -406,7 +416,7 @@ impl AsTableMut for Value {
     {
         match self {
             Value::Table(table) => Ok(table),
-            _ => Err(format!("Xargo.toml: `{}` must be a table", on_error_path()).into()),
+            _ => Err(anyhow!("Xargo.toml: `{}` must be a table", on_error_path()).into()),
         }
     }
 }
@@ -421,10 +431,7 @@ impl Blueprint {
     /// Add $CRATE to `patch` section, as needed to build libstd.
     fn add_patch(patch: &mut Table, src_path: &Path, crate_: &str) -> Result<()> {
         // Old sysroots have this in `src/tools/$CRATE`, new sysroots in `library/$CRATE`.
-        let paths = [
-            src_path.join(crate_),
-            src_path.join("tools").join(crate_),
-        ];
+        let paths = [src_path.join(crate_), src_path.join("tools").join(crate_)];
         if let Some(path) = paths.iter().find(|p| p.exists()) {
             // add crate to patch section (if not specified)
             fn table_entry<'a>(table: &'a mut Table, key: &str) -> Result<&'a mut Table> {
@@ -456,7 +463,7 @@ impl Blueprint {
             if let Some(path) = crate_spec.get_mut("path") {
                 let p = PathBuf::from(
                     path.as_str()
-                        .ok_or_else(|| format!("`{}.path` must be a string", on_error_path()))?,
+                        .ok_or_else(|| anyhow!("`{}.path` must be a string", on_error_path()))?,
                 );
 
                 if !p.is_absolute() {
@@ -464,7 +471,7 @@ impl Blueprint {
                         base_path
                             .join(&p)
                             .canonicalize()
-                            .chain_err(|| format!("couldn't canonicalize {}", p.display()))?
+                            .map_err(|_| anyhow!("couldn't canonicalize {}", p.display()))?
                             .display()
                             .to_string(),
                     );
@@ -478,12 +485,15 @@ impl Blueprint {
             Some(value) => value
                 .as_table()
                 .cloned()
-                .ok_or_else(|| format!("Xargo.toml: `patch` must be a table"))?,
-            None => Table::new()
+                .ok_or_else(|| anyhow!("Xargo.toml: `patch` must be a table"))?,
+            None => Table::new(),
         };
 
         for (k1, v) in patch.iter_mut() {
-            for (k2, v) in v.as_table_mut_or_err(|| format!("patch.{}", k1))?.iter_mut() {
+            for (k2, v) in v
+                .as_table_mut_or_err(|| format!("patch.{}", k1))?
+                .iter_mut()
+            {
                 let krate = v.as_table_mut_or_err(|| format!("patch.{}.{}", k1, k2))?;
 
                 make_path_absolute(krate, base_path, || format!("patch.{}.{}", k1, k2))?;
@@ -503,10 +513,10 @@ impl Blueprint {
                 let mut deps = value
                     .as_table()
                     .cloned()
-                    .ok_or_else(|| format!("Xargo.toml: `dependencies` must be a table"))?;
+                    .ok_or_else(|| anyhow!("Xargo.toml: `dependencies` must be a table"))?;
 
                 let more_deps = tvalue.as_table().ok_or_else(|| {
-                    format!(
+                    anyhow!(
                         "Xargo.toml: `target.{}.dependencies` must be \
                          a table",
                         target
@@ -514,7 +524,7 @@ impl Blueprint {
                 })?;
                 for (k, v) in more_deps {
                     if deps.insert(k.to_owned(), v.clone()).is_some() {
-                        Err(format!(
+                        Err(anyhow!(
                             "found duplicate dependency name {}, \
                              but all dependencies must have a \
                              unique name",
@@ -525,15 +535,17 @@ impl Blueprint {
 
                 deps
             }
-            (Some(value), None) | (None, Some(value)) => if let Some(table) = value.as_table() {
-                table.clone()
-            } else {
-                Err(format!(
-                    "Xargo.toml: target.{}.dependencies must be \
+            (Some(value), None) | (None, Some(value)) => {
+                if let Some(table) = value.as_table() {
+                    table.clone()
+                } else {
+                    Err(anyhow!(
+                        "Xargo.toml: target.{}.dependencies must be \
                      a table",
-                    target
-                ))?
-            },
+                        target
+                    ))?
+                }
+            }
             (None, None) => {
                 // If no dependencies were listed, we assume `core` and `compiler_builtins` as the
                 // dependencies
@@ -549,13 +561,9 @@ impl Blueprint {
                 // reference compiler-builtins with `version = "*"`,
                 // the corresponding version of compiler_builtins matching the used std
                 // is selected because of the copied `Cargo.lock`-file from std.
-                cb.insert("version".to_owned(),
-                    Value::String("*".to_owned()));
+                cb.insert("version".to_owned(), Value::String("*".to_owned()));
                 cb.insert("stage".to_owned(), Value::Integer(1));
-                t.insert(
-                    "compiler_builtins".to_owned(),
-                    Value::Table(cb),
-                );
+                t.insert("compiler_builtins".to_owned(), Value::Table(cb));
                 t
             }
         };
@@ -566,7 +574,7 @@ impl Blueprint {
                 let stage = if let Some(value) = map.remove("stage") {
                     value
                         .as_integer()
-                        .ok_or_else(|| format!("dependencies.{}.stage must be an integer", k))?
+                        .ok_or_else(|| anyhow!("dependencies.{}.stage must be an integer", k))?
                 } else {
                     0
                 };
@@ -577,10 +585,7 @@ impl Blueprint {
                     // No path and no git given.  This might be in the sysroot, but if we don't find it there we assume it comes from crates.io.
                     // Current sysroots call it just "std" (etc), but older sysroots use "libstd" (etc),
                     // so we check both.
-                    let paths = [
-                        src.path().join(&k),
-                        src.path().join(format!("lib{}", k)),
-                    ];
+                    let paths = [src.path().join(&k), src.path().join(format!("lib{}", k))];
                     if let Some(path) = paths.iter().find(|p| p.exists()) {
                         map.insert("path".to_owned(), Value::String(path.display().to_string()));
                     }
@@ -588,10 +593,11 @@ impl Blueprint {
 
                 blueprint.push(stage, k, map, &patch);
             } else {
-                Err(format!(
+                Err(anyhow!(
                     "Xargo.toml: target.{}.dependencies.{} must be \
                      a table",
-                    target, k
+                    target,
+                    k
                 ))?
             }
         }

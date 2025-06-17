@@ -37,12 +37,12 @@ install:
 
 test_script:
   - if [%APPVEYOR_REPO_TAG%]==[false] (
-      cargo build --target %TARGET% &&
-      cargo run --target %TARGET% -- -V &&
-      if [%RUST_VERSION%]==[nightly] (
-        cargo test --target %TARGET% --features dev &&
-        cargo test --target %TARGET%
-      )
+    cargo build --target %TARGET% &&
+    cargo run --target %TARGET% -- -V &&
+    if [%RUST_VERSION%]==[nightly] (
+    cargo test --target %TARGET% --features dev &&
+    cargo test --target %TARGET%
+    )
     )
 
 before_deploy:

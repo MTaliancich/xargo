@@ -3,13 +3,13 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::{env, fmt};
 
-use toml::{Value, map::Map};
+use toml::{map::Map, Value};
 
+use anyhow::*;
 use cli::Args;
-use errors::*;
 use extensions::CommandExt;
-use util;
 use sysroot::XargoMode;
+use util;
 use xargo::Home;
 
 #[derive(Clone)]
@@ -50,7 +50,7 @@ impl Rustflags {
     pub fn encode(mut self, home: &Home) -> String {
         self.flags.push("--sysroot".to_owned());
         self.flags.push(home.display().to_string()); // FIXME: we shouldn't use display, we should keep the OsString
-        // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
+                                                     // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
         self.flags.join("\x1f")
     }
 }
@@ -75,7 +75,7 @@ impl Rustdocflags {
     pub fn encode(mut self, home: &Home) -> String {
         self.flags.push("--sysroot".to_owned());
         self.flags.push(home.display().to_string()); // FIXME: we shouldn't use display, we should keep the OsString
-        // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
+                                                     // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
         self.flags.join("\x1f")
     }
 }
@@ -84,19 +84,17 @@ pub fn rustdocflags(config: Option<&Config>, target: &str) -> Result<Rustdocflag
     flags(config, target, "rustdocflags").map(|fs| Rustdocflags { flags: fs })
 }
 
-
 /// Returns the flags for `tool` (e.g. rustflags)
 ///
 /// This looks into the environment and into `.cargo/config`
 fn flags(config: Option<&Config>, target: &str, tool: &str) -> Result<Vec<String>> {
     // TODO: would be nice to also support the CARGO_ENCODED_ env vars
     if let Some(t) = env::var_os(tool.to_uppercase()) {
-        return Ok(
-            t.to_string_lossy()
-                .split_whitespace()
-                .map(|w| w.to_owned())
-                .collect(),
-        );
+        return Ok(t
+            .to_string_lossy()
+            .split_whitespace()
+            .map(|w| w.to_owned())
+            .collect());
     }
 
     if let Some(config) = config.as_ref() {
@@ -109,7 +107,8 @@ fn flags(config: Option<&Config>, target: &str, tool: &str) -> Result<Vec<String
             .or_else(|| {
                 build = true;
                 config.table.get("build").and_then(|t| t.get(tool))
-            }) {
+            })
+        {
             let mut flags = vec![];
 
             let mut error = false;
@@ -128,13 +127,13 @@ fn flags(config: Option<&Config>, target: &str, tool: &str) -> Result<Vec<String
 
             if error {
                 if build {
-                    Err(format!(
+                    Err(anyhow!(
                         ".cargo/config: build.{} must be an array \
                          of strings",
                         tool
                     ))?
                 } else {
-                    Err(format!(
+                    Err(anyhow!(
                         ".cargo/config: target.{}.{} must be an \
                          array of strings",
                         target,
@@ -159,9 +158,7 @@ pub fn command() -> Command {
 }
 
 pub fn run(args: &Args, verbose: bool) -> Result<ExitStatus> {
-    command()
-        .args(args.all())
-        .run_and_get_status(verbose)
+    command().args(args.all()).run_and_get_status(verbose)
 }
 
 pub struct Config {
@@ -171,8 +168,9 @@ pub struct Config {
 impl Config {
     pub fn target(&self) -> Result<Option<&str>> {
         if let Some(v) = self.table.get("build").and_then(|t| t.get("target")) {
-            Ok(Some(v.as_str()
-                .ok_or_else(|| format!(".cargo/config: build.target must be a string"))?))
+            Ok(Some(v.as_str().ok_or_else(|| {
+                anyhow!(".cargo/config: build.target must be a string")
+            })?))
         } else {
             Ok(None)
         }
@@ -180,7 +178,7 @@ impl Config {
 }
 
 pub fn config() -> Result<Option<Config>> {
-    let cd = env::current_dir().chain_err(|| "couldn't get the current directory")?;
+    let cd = env::current_dir().map_err(|e| Error::new(e))?;
 
     if let Some(p) = util::search(&cd, ".cargo/config") {
         Ok(Some(Config {
@@ -236,6 +234,7 @@ pub struct Toml {
 
 impl Toml {
     /// `profile.release` part of `Cargo.toml`
+    #[allow(mismatched_lifetime_syntaxes)]
     pub fn profile(&self) -> Option<Profile> {
         self.table
             .get("profile")
@@ -262,11 +261,11 @@ pub fn root(mode: XargoMode, manifest_path: Option<&str>) -> Result<Option<Root>
     // Don't require a 'Cargo.toml' to exist when 'xargo-check' is used
     let name = match mode {
         XargoMode::Build => "Cargo.toml",
-        XargoMode::Check => "Xargo.toml"
+        XargoMode::Check => "Xargo.toml",
     };
 
     let cd = match manifest_path {
-        None => env::current_dir().chain_err(|| "couldn't get the current directory")?,
+        None => env::current_dir().map_err(Error::new)?,
         Some(p) => {
             let mut pb = PathBuf::from(p);
             pb.pop(); // strip filename, keep directory containing Cargo.toml

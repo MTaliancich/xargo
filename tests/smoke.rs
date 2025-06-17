@@ -1,13 +1,12 @@
 #![deny(warnings)]
 
-#[macro_use]
-extern crate error_chain;
+extern crate anyhow;
+extern crate home;
 #[macro_use]
 extern crate lazy_static;
 extern crate parking_lot;
 extern crate rustc_version;
 extern crate tempdir;
-extern crate dirs;
 
 use std::fs::OpenOptions;
 use std::io::Write;
@@ -15,22 +14,17 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::{env, fs};
 
+use anyhow::*;
 use parking_lot::{Mutex, MutexGuard};
+use std::result::Result::Ok;
 use tempdir::TempDir;
-
-use errors::*;
-
-mod errors {
-    #![allow(unused_doc_comments)]
-    error_chain!();
-}
 
 macro_rules! run {
     () => {
         if let Err(e) = run() {
             panic!("{}", e)
         }
-    }
+    };
 }
 
 // Returns Xargo's "home"
@@ -38,11 +32,9 @@ fn home() -> Result<PathBuf> {
     if let Some(h) = env::var_os("XARGO_HOME") {
         Ok(PathBuf::from(h))
     } else {
-        Ok(
-            dirs::home_dir()
-                .ok_or_else(|| "couldn't find your home directory. Is $HOME set?")?
-                .join(".xargo"),
-        )
+        Ok(home::home_dir()
+            .ok_or_else(|| anyhow!("couldn't find your home directory. Is $HOME set?"))?
+            .join(".xargo"))
     }
 }
 
@@ -50,7 +42,7 @@ fn cleanup(target: &str) -> Result<()> {
     let p = home()?.join("lib/rustlib").join(target);
 
     if p.exists() {
-        fs::remove_dir_all(&p).chain_err(|| format!("couldn't clean sysroot for {}", target))
+        fs::remove_dir_all(&p).map_err(|_| anyhow!("couldn't clean sysroot for {}", target))
     } else {
         Ok(())
     }
@@ -59,10 +51,9 @@ fn cleanup(target: &str) -> Result<()> {
 fn exists(krate: &str, target: &str) -> Result<bool> {
     let p = home()?.join("lib/rustlib").join(target).join("lib");
 
-    for e in fs::read_dir(&p).chain_err(|| format!("couldn't read the directory {}", p.display()))?
-    {
-        let e = e.chain_err(|| {
-            format!(
+    for e in fs::read_dir(&p).map_err(|_| anyhow!("couldn't read the directory {}", p.display()))? {
+        let e = e.map_err(|_| {
+            anyhow!(
                 "error reading the contents of the directory {}",
                 p.display()
             )
@@ -81,15 +72,17 @@ fn host() -> String {
 }
 
 fn mkdir(path: &Path) -> Result<()> {
-    fs::create_dir(path).chain_err(|| {
-        format!("couldn't create the directory {}", path.display())
-    })
+    fs::create_dir(path).map_err(|_| anyhow!("couldn't create the directory {}", path.display()))
 }
 
 fn sysroot_was_built(stderr: &str, target: &str) -> bool {
     stderr.lines().filter(|l| l.starts_with("+")).any(|l| {
-        l.contains("cargo") && l.contains("build") && l.contains("--target") && l.contains(target)
-            && l.contains("-p") && l.contains("core")
+        l.contains("cargo")
+            && l.contains("build")
+            && l.contains("--target")
+            && l.contains(target)
+            && l.contains("-p")
+            && l.contains("core")
     })
 }
 
@@ -106,13 +99,14 @@ fn write(path: &Path, append: bool, contents: &str) -> Result<()> {
 
     opts.write(true)
         .open(path)
-        .chain_err(|| format!("couldn't open {}", p))?
+        .map_err(|_| anyhow!("couldn't open {}", p))?
         .write_all(contents.as_bytes())
-        .chain_err(|| format!("couldn't write to {}", p))
+        .map_err(|_| anyhow!("couldn't write to {}", p))
 }
 
 fn xargo() -> Result<Command> {
-    let mut p = env::current_exe().chain_err(|| "couldn't get path to current executable")?;
+    let mut p =
+        env::current_exe().map_err(|_| anyhow!("couldn't get path to current executable"))?;
     p.pop();
     p.pop();
     p.push("xargo");
@@ -120,7 +114,8 @@ fn xargo() -> Result<Command> {
 }
 
 fn xargo_check() -> Result<Command> {
-    let mut p = env::current_exe().chain_err(|| "couldn't get path to current executable")?;
+    let mut p =
+        env::current_exe().map_err(|_| anyhow!("couldn't get path to current executable"))?;
     p.pop();
     p.pop();
     p.push("xargo-check");
@@ -134,13 +129,14 @@ trait CommandExt {
 
 impl CommandExt for Command {
     fn run(&mut self) -> Result<()> {
-        let status = self.status()
-            .chain_err(|| format!("couldn't execute `{:?}`", self))?;
+        let status = self
+            .status()
+            .map_err(|_| anyhow!("couldn't execute `{:?}`", self))?;
 
         if status.success() {
             Ok(())
         } else {
-            Err(format!(
+            Err(anyhow!(
                 "`{:?}` failed with exit code: {:?}",
                 self,
                 status.code()
@@ -149,11 +145,12 @@ impl CommandExt for Command {
     }
 
     fn run_and_get_stderr(&mut self) -> Result<String> {
-        let out = self.output()
-            .chain_err(|| format!("couldn't execute `{:?}`", self))?;
+        let out = self
+            .output()
+            .map_err(|_| anyhow!("couldn't execute `{:?}`", self))?;
 
-        let stderr = String::from_utf8(out.stderr)
-            .chain_err(|| format!("`{:?}` output was not UTF-8", self));
+        let stderr =
+            String::from_utf8(out.stderr).map_err(|_| anyhow!("`{:?}` output was not UTF-8", self));
 
         if out.status.success() {
             stderr
@@ -162,7 +159,7 @@ impl CommandExt for Command {
                 Ok(e) => print!("{}", e),
                 Err(e) => print!("{}", e),
             }
-            Err(format!(
+            Err(anyhow!(
                 "`{:?}` failed with exit code: {:?}",
                 self,
                 out.status.code()
@@ -177,15 +174,19 @@ struct Project {
 }
 
 /// Create a simple project
-fn create_simple_project(project_path: &Path, name: &'static str, library_source: &'static str) -> Result<()> {
+fn create_simple_project(
+    project_path: &Path,
+    name: &'static str,
+    library_source: &'static str,
+) -> Result<()> {
     xargo()?
         .args(&["init", "-q", "--lib", "--vcs", "none", "--name", name])
         .current_dir(project_path)
         .run()?;
 
-   write(&project_path.join("src/lib.rs"), false, library_source)?;
+    write(&project_path.join("src/lib.rs"), false, library_source)?;
 
-   Ok(())
+    Ok(())
 }
 
 impl Project {
@@ -210,7 +211,8 @@ impl Project {
 }
 "#;
 
-        let td = TempDir::new_in(dir, "xargo").chain_err(|| "couldn't create a temporary directory")?;
+        let td = TempDir::new_in(dir, "xargo")
+            .map_err(|_| anyhow!("couldn't create a temporary directory"))?;
 
         create_simple_project(td.path(), name, "#![no_std]")?;
         write(&td.path().join(format!("{}.json", name)), false, JSON)?;
@@ -245,21 +247,26 @@ impl Project {
             .run_and_get_stderr()
     }
 
-    fn build_from_workdir_and_get_stderr(&self, target: Option<&str>, working_dir: &Path) -> Result<String> {
+    fn build_from_workdir_and_get_stderr(
+        &self,
+        target: Option<&str>,
+        working_dir: &Path,
+    ) -> Result<String> {
         let mut cmd = xargo()?;
         // set RUST_TARGET_PATH since target json file not in working dir
         cmd.env("RUST_TARGET_PATH", &self.td.path());
         cmd.arg("build");
 
-        cmd.args(&["--manifest-path", &self.td.path().join("Cargo.toml").to_str().unwrap()]);
+        cmd.args(&[
+            "--manifest-path",
+            &self.td.path().join("Cargo.toml").to_str().unwrap(),
+        ]);
 
         if let Some(target) = target {
             cmd.args(&["--target", target]);
         }
 
-        cmd.arg("-v")
-            .current_dir(working_dir)
-            .run_and_get_stderr()
+        cmd.arg("-v").current_dir(working_dir).run_and_get_stderr()
     }
 
     /// Appends a string to the project `Cargo.toml`
@@ -283,7 +290,6 @@ impl Project {
         Ok(())
     }
 
-
     /// Adds a `Xargo.toml` to the project
     fn xargo_toml(&self, toml: &str) -> Result<()> {
         write(&self.td.path().join("Xargo.toml"), false, toml)
@@ -300,7 +306,7 @@ fn hcleanup(triple: &str) -> Result<()> {
     let p = home()?.join("HOST/lib/rustlib").join(triple);
 
     if p.exists() {
-        fs::remove_dir_all(&p).chain_err(|| format!("couldn't clean sysroot for {}", triple))
+        fs::remove_dir_all(&p).map_err(|_| anyhow!("couldn't clean sysroot for {}", triple))
     } else {
         Ok(())
     }
@@ -323,7 +329,8 @@ impl HProject {
         let guard = ONCE.lock();
 
         // Put a space into the working directory name to also test that case.
-        let td = TempDir::new("xar go").chain_err(|| "couldn't create a temporary directory")?;
+        let td =
+            TempDir::new("xar go").map_err(|_| anyhow!("couldn't create a temporary directory"))?;
 
         xargo()?
             .args(&["init", "-q", "--lib", "--vcs", "none", "--name", "host"])
@@ -349,7 +356,10 @@ impl HProject {
 
     fn build(&self, verb: &str) -> Result<()> {
         // Calling "run_and_get_stderr" to be less verbose
-        xargo()?.arg(verb).current_dir(self.td.path()).run_and_get_stderr()?;
+        xargo()?
+            .arg(verb)
+            .current_dir(self.td.path())
+            .run_and_get_stderr()?;
         Ok(())
     }
 
@@ -369,7 +379,11 @@ impl HProject {
     }
 
     /// Runs `xargo-check` with the specified subcommand
-    fn xargo_check_subcommand(&self, subcommand: Option<&str>, target: Option<&str>) -> Result<String> {
+    fn xargo_check_subcommand(
+        &self,
+        subcommand: Option<&str>,
+        target: Option<&str>,
+    ) -> Result<String> {
         let mut cmd = xargo_check()?;
         if let Some(subcommand) = subcommand {
             cmd.arg(subcommand);
@@ -377,11 +391,8 @@ impl HProject {
         if let Some(target) = target {
             cmd.args(&["--target", target]);
         }
-        cmd
-            .current_dir(self.td.path())
-            .run_and_get_stderr()
+        cmd.current_dir(self.td.path()).run_and_get_stderr()
     }
-
 }
 
 impl Drop for HProject {
@@ -415,14 +426,17 @@ fn target_dependencies() {
         const TARGET: &'static str = "thumbv7m-none-eabi";
         const STAGE1: &'static str = "stage1";
 
-        let td = TempDir::new("xargo").chain_err(|| "couldn't create a temporary directory")?;
+        let td =
+            TempDir::new("xargo").map_err(|_| anyhow!("couldn't create a temporary directory"))?;
         let project = Project::new_in(td.path().to_path_buf(), TARGET)?;
 
         let stage1_path = td.path().join(STAGE1);
 
         mkdir(stage1_path.as_path())?;
         create_simple_project(stage1_path.as_path(), STAGE1, "#![no_std]")?;
-        write(&td.path().join("Xargo.toml"), false,
+        write(
+            &td.path().join("Xargo.toml"),
+            false,
             r#"
 [target.thumbv7m-none-eabi.dependencies.alloc]
 
@@ -478,7 +492,8 @@ fn build_outside_project_dir() {
 "#,
         )?;
         // This `workdir` is from where `xargo build` is invoked. It is different from the project dir.
-        let workdir = TempDir::new("xargo_workdir").chain_err(|| "couldn't create a temporary directory")?;
+        let workdir = TempDir::new("xargo_workdir")
+            .map_err(|_| anyhow!("couldn't create a temporary directory"))?;
 
         project.build_from_workdir(TARGET, &workdir.path())?;
 
@@ -649,7 +664,8 @@ rustflags = ["--cfg", 'xargo="y e s"']
 
         assert!(
             stderr.contains(r#"'xargo="y e s"'"#),
-            "unexpected stderr:\n{}", stderr
+            "unexpected stderr:\n{}",
+            stderr
         );
 
         Ok(())
@@ -676,12 +692,10 @@ panic = "abort"
 
         let stderr = project.build_and_get_stderr(Some(TARGET))?;
 
-        assert!(
-            stderr
-                .lines()
-                .filter(|l| !l.starts_with("+") && l.contains("--release"))
-                .all(|l| l.contains("-C") && l.contains("panic=abort"))
-        );
+        assert!(stderr
+            .lines()
+            .filter(|l| !l.starts_with("+") && l.contains("--release"))
+            .all(|l| l.contains("-C") && l.contains("panic=abort")));
 
         Ok(())
     }
@@ -745,7 +759,10 @@ fn specification_changed() {
         assert!(sysroot_was_built(&stderr, TARGET));
 
         write(
-            &project.td.path().join("thumbv6m-specification_changed-eabi.json"),
+            &project
+                .td
+                .path()
+                .join("thumbv6m-specification_changed-eabi.json"),
             false,
             JSON,
         )?;
@@ -787,7 +804,10 @@ fn unchanged_specification() {
         assert!(sysroot_was_built(&stderr, TARGET));
 
         write(
-            &project.td.path().join("thumbv6m-unchanged_specification-eabi.json"),
+            &project
+                .td
+                .path()
+                .join("thumbv6m-unchanged_specification-eabi.json"),
             false,
             JSON,
         )?;
@@ -903,19 +923,20 @@ tag = "1.0.47"
         )?;
         let stderr = project.build_and_get_stderr()?;
 
-        assert!(stderr
-            .lines()
-            .any(|line| line.contains("Compiling cc ")
+        assert!(
+            stderr.lines().any(|line| line.contains("Compiling cc ")
                 && line.contains("https://github.com/alexcrichton/cc-rs")),
-            "Looks like patching did not work. stderr:\n{}", stderr
+            "Looks like patching did not work. stderr:\n{}",
+            stderr
         );
 
         Ok(())
     }
 
     // Only run this on pinned nightlies, to avoid having to update the version number all the time.
-    let is_pinned = std::env::var("TRAVIS_RUST_VERSION").ok().map_or(false,
-            |var| var.starts_with("nightly-"));
+    let is_pinned = std::env::var("TRAVIS_RUST_VERSION")
+        .ok()
+        .map_or(false, |var| var.starts_with("nightly-"));
     if is_pinned {
         run!()
     }
@@ -943,12 +964,16 @@ fn cargo_check_check_no_ctoml() {
         // Make sure that 'Xargo.toml` exists
         project.xargo_toml("")?;
         std::fs::remove_file(project.td.path().join("Cargo.toml"))
-            .chain_err(|| format!("Could not remove Cargo.toml"))?;
+            .map_err(|_| anyhow!("Could not remove Cargo.toml"))?;
 
         // windows-gnu specifically needs some extra files to be copied for full builds;
         // make sure check-builds work without those files.
         let stderr = project.xargo_check_subcommand(None, Some(TARGET))?;
-        assert!(stderr.contains("Checking core"), "Looks like checking did not work. stderr:\n{}", stderr);
+        assert!(
+            stderr.contains("Checking core"),
+            "Looks like checking did not work. stderr:\n{}",
+            stderr
+        );
 
         Ok(())
     }

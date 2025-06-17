@@ -5,13 +5,13 @@ use std::process::Command;
 
 pub use rustc_version::version_meta as version;
 
-use serde_json::Value;
 use serde_json;
+use serde_json::Value;
 
-use errors::*;
+use anyhow::*;
+use cargo::Root;
 use extensions::CommandExt;
 use {rustc, util};
-use cargo::Root;
 
 fn command() -> Command {
     env::var_os("RUSTC")
@@ -32,10 +32,8 @@ pub fn sysroot(verbose: bool) -> Result<Sysroot> {
     command()
         .args(&["--print", "sysroot"])
         .run_and_get_stdout(verbose)
-        .map(|l| {
-            Sysroot {
-                path: PathBuf::from(l.trim()),
-            }
+        .map(|l| Sysroot {
+            path: PathBuf::from(l.trim()),
         })
 }
 /// Path to Rust source
@@ -74,22 +72,34 @@ impl Sysroot {
     pub fn src(&self) -> Result<Src> {
         let src = self.path().join("lib").join("rustlib").join("src");
 
-        if src.join("rust").join("src").join("libstd").join("Cargo.toml").is_file() {
+        if src
+            .join("rust")
+            .join("src")
+            .join("libstd")
+            .join("Cargo.toml")
+            .is_file()
+        {
             return Ok(Src {
                 path: src.join("rust").join("src"),
             });
         }
 
-        if src.join("rust").join("library").join("std").join("Cargo.toml").is_file() {
+        if src
+            .join("rust")
+            .join("library")
+            .join("std")
+            .join("Cargo.toml")
+            .is_file()
+        {
             return Ok(Src {
                 path: src.join("rust").join("library"),
             });
         }
 
-        Err(
+        Err(anyhow!(
             "`rust-src` component not found. Run `rustup component add \
              rust-src`.",
-        )?
+        ))?
     }
 }
 
@@ -104,16 +114,13 @@ impl Target {
         let triple = triple.to_owned();
 
         if rustc::targets(verbose)?.iter().any(|t| t == &triple) {
-            Ok(Some(Target::Builtin { triple: triple }))
+            Ok(Some(Target::Builtin { triple }))
         } else {
             let mut json = root.path().join(&triple);
             json.set_extension("json");
 
             if json.exists() {
-                return Ok(Some(Target::Custom {
-                    json: json,
-                    triple: triple,
-                }));
+                return Ok(Some(Target::Custom { json, triple }));
             } else {
                 if let Some(p) = env::var_os("RUST_TARGET_PATH") {
                     let mut json = PathBuf::from(p);
@@ -121,10 +128,7 @@ impl Target {
                     json.set_extension("json");
 
                     if json.exists() {
-                        return Ok(Some(Target::Custom {
-                            json: json,
-                            triple: triple,
-                        }));
+                        return Ok(Some(Target::Custom { json, triple }));
                     }
                 }
             }
@@ -148,7 +152,7 @@ impl Target {
             // Here we roundtrip to/from JSON to get the same hash when some
             // fields of the JSON file has been shuffled around
             serde_json::from_str::<Value>(&util::read(json)?)
-                .chain_err(|| format!("{} is not valid JSON", json.display()))?
+                .map_err(|_| anyhow!("{} is not valid JSON", json.display()))?
                 .to_string()
                 .hash(hasher);
         }
