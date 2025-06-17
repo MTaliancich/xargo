@@ -3,14 +3,14 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, ExitStatus};
 use std::{env, fmt};
 
-use toml::{map::Map, Value};
+use toml::{Value, map::Map};
 
+use crate::cli::Args;
+use crate::extensions::CommandExt;
+use crate::sysroot::XargoMode;
+use crate::util;
+use crate::xargo::Home;
 use anyhow::*;
-use cli::Args;
-use extensions::CommandExt;
-use sysroot::XargoMode;
-use util;
-use xargo::Home;
 
 #[derive(Clone)]
 pub struct Rustflags {
@@ -50,7 +50,7 @@ impl Rustflags {
     pub fn encode(mut self, home: &Home) -> String {
         self.flags.push("--sysroot".to_owned());
         self.flags.push(home.display().to_string()); // FIXME: we shouldn't use display, we should keep the OsString
-                                                     // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
+        // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
         self.flags.join("\x1f")
     }
 }
@@ -75,7 +75,7 @@ impl Rustdocflags {
     pub fn encode(mut self, home: &Home) -> String {
         self.flags.push("--sysroot".to_owned());
         self.flags.push(home.display().to_string()); // FIXME: we shouldn't use display, we should keep the OsString
-                                                     // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
+        // As per CARGO_ENCODED_RUSTFLAGS docs, the separator is `0x1f`.
         self.flags.join("\x1f")
     }
 }

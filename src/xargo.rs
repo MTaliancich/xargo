@@ -6,13 +6,13 @@ use std::{env, mem};
 use rustc_version::VersionMeta;
 use toml::Value;
 
+use crate::CompilationMode;
+use crate::cargo::{Config, Root, Rustflags, Subcommand};
+use crate::cli::Args;
+use crate::extensions::CommandExt;
+use crate::flock::{FileLock, Filesystem};
+use crate::{cargo, util};
 use anyhow::*;
-use cargo::{Config, Root, Rustflags, Subcommand};
-use cli::Args;
-use extensions::CommandExt;
-use flock::{FileLock, Filesystem};
-use CompilationMode;
-use {cargo, util};
 
 pub fn run(
     args: &Args,

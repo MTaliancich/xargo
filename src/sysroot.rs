@@ -1,5 +1,5 @@
-use std::collections::hash_map::DefaultHasher;
 use std::collections::BTreeMap;
+use std::collections::hash_map::DefaultHasher;
 use std::hash::{Hash, Hasher};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -7,16 +7,16 @@ use std::{env, fs};
 
 use rustc_version::VersionMeta;
 use tempdir::TempDir;
-use toml::{map::Map, value::Table, Value};
+use toml::{Value, map::Map, value::Table};
 
+use crate::CompilationMode;
+use crate::cargo::{Root, Rustflags};
+use crate::extensions::CommandExt;
+use crate::rustc::{Src, Sysroot, Target};
+use crate::util;
+use crate::xargo::Home;
+use crate::{cargo, xargo};
 use anyhow::*;
-use cargo::{Root, Rustflags};
-use extensions::CommandExt;
-use rustc::{Src, Sysroot, Target};
-use util;
-use xargo::Home;
-use CompilationMode;
-use {cargo, xargo};
 
 fn profile() -> &'static str {
     "release"

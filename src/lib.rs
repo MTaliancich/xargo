@@ -24,8 +24,8 @@ use std::{env, io, process};
 
 use rustc_version::Channel;
 
+use crate::rustc::Target;
 use anyhow::*;
-use rustc::Target;
 
 mod cargo;
 mod cli;
@@ -36,7 +36,7 @@ mod sysroot;
 mod util;
 mod xargo;
 
-pub use sysroot::XargoMode;
+pub use crate::sysroot::XargoMode;
 
 // We use a different sysroot for Native compilation to avoid file locking
 //

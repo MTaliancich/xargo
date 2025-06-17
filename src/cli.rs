@@ -1,6 +1,6 @@
 use std::env;
 
-use cargo::Subcommand;
+use crate::cargo::Subcommand;
 
 pub struct Args {
     all: Vec<String>,

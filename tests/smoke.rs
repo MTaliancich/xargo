@@ -692,10 +692,12 @@ panic = "abort"
 
         let stderr = project.build_and_get_stderr(Some(TARGET))?;
 
-        assert!(stderr
-            .lines()
-            .filter(|l| !l.starts_with("+") && l.contains("--release"))
-            .all(|l| l.contains("-C") && l.contains("panic=abort")));
+        assert!(
+            stderr
+                .lines()
+                .filter(|l| !l.starts_with("+") && l.contains("--release"))
+                .all(|l| l.contains("-C") && l.contains("panic=abort"))
+        );
 
         Ok(())
     }

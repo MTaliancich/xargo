@@ -8,10 +8,10 @@ pub use rustc_version::version_meta as version;
 use serde_json;
 use serde_json::Value;
 
+use crate::cargo::Root;
+use crate::extensions::CommandExt;
+use crate::{rustc, util};
 use anyhow::*;
-use cargo::Root;
-use extensions::CommandExt;
-use {rustc, util};
 
 fn command() -> Command {
     env::var_os("RUSTC")

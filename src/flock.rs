@@ -146,7 +146,7 @@ impl Drop for FileLock {
 fn acquire(
     msg: &str,
     path: &Path,
-    try: &dyn Fn() -> io::Result<()>,
+    r#try: &dyn Fn() -> io::Result<()>,
     block: &dyn Fn() -> io::Result<()>,
 ) -> io::Result<()> {
     #[cfg(all(target_os = "linux", not(target_env = "musl")))]
@@ -177,7 +177,7 @@ fn acquire(
         return Ok(());
     }
 
-    match try() {
+    match r#try() {
         Ok(_) => return Ok(()),
         #[cfg(target_os = "macos")]
         Err(ref e) if e.raw_os_error() == Some(::libc::ENOTSUP) => return Ok(()),
