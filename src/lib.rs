@@ -1,4 +1,3 @@
-#![feature(file_lock)]
 #![deny(warnings)]
 
 extern crate anyhow;

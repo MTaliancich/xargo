@@ -446,8 +446,9 @@ impl Blueprint {
 
     /// Add $CRATE to `patch` section, as needed to build libstd.
     fn add_patch(patch: &mut Table, src_path: &Path, crate_: &str) -> Result<()> {
+        let crate_path = crate_.replace("_", "-");
         // Old sysroots have this in `src/tools/$CRATE`, new sysroots in `library/$CRATE`.
-        let paths = [src_path.join(crate_), src_path.join("tools").join(crate_)];
+        let paths = [src_path.join(&crate_path), src_path.join("tools").join(crate_path)];
         if let Some(path) = paths.iter().find(|p| p.exists()) {
             // add crate to patch section (if not specified)
             fn table_entry<'a>(table: &'a mut Table, key: &str) -> Result<&'a mut Table> {
@@ -519,6 +520,10 @@ impl Blueprint {
         Blueprint::add_patch(&mut patch, src.path(), "rustc-std-workspace-core")?;
         Blueprint::add_patch(&mut patch, src.path(), "rustc-std-workspace-alloc")?;
         Blueprint::add_patch(&mut patch, src.path(), "rustc-std-workspace-std")?;
+        Blueprint::add_patch(&mut patch, src.path(), "panic_unwind")?;
+        Blueprint::add_patch(&mut patch, src.path(), "panic_abort")?;
+        Blueprint::add_patch(&mut patch, src.path(), "rustc-std-workspace-std")?;
+        Blueprint::add_patch(&mut patch, &src.path().join("compiler-builtins"), "compiler_builtins")?;
 
         // Compose dependency sections
         let deps = match (
