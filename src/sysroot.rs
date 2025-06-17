@@ -115,12 +115,15 @@ version = "0.0.0"
         }
 
         // rust-src comes with a lockfile for libstd. Use it.
-        let src_parent = src
+        /*let src_parent = src
             .path()
             .parent()
             .map(Path::to_path_buf)
             .unwrap_or_else(|| src.path().join(".."));
-        let lockfile = src_parent.join("Cargo.lock");
+        let lockfile = src_parent.join("Cargo.lock");*/
+        // Fix for #347 by @japaric
+        let lockfile = src.path().join("Cargo.lock");
+        
         let target_lockfile = td.join("Cargo.lock");
         fs::copy(lockfile, &target_lockfile)
             .map_err(|_| anyhow!("Cargo.lock file is missing from source dir"))?;
